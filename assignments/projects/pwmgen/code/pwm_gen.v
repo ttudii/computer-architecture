@@ -12,19 +12,21 @@ module pwm_gen (
     // top facing signals
     output reg pwm_out
 );
-
     // Extragere biti de configurare din registrul functions
     wire align_left_right = functions[0];  // 0 = stanga, 1 = dreapta
     wire aligned_mode = functions[1];      // 0 = aliniat, 1 = nealiniat
     
-    // Detectare overflow/underflow pentru resetarea la configurari noi
-    reg last_overflow_underflow;
-    wire overflow_underflow;
+    // Registru pentru detectarea tranzitiei overflow
+    reg [15:0] last_count_val;
     
-    // Determinare daca numaratorul a dat overflow sau underflow
-    // Overflow cand count_val == period
-    // Underflow cand count_val == 0 (pentru modul descrescator)
-    assign overflow_underflow = (count_val == period) || (count_val == 16'h0000);
+    // Detectare overflow/underflow pe baza tranzitiei
+    // Overflow = count_val trece de la period la 0 SAU este la period
+    wire overflow_event = (count_val == period);
+    wire wrap_event = (count_val == 0 && last_count_val == period);
+    wire overflow_underflow = overflow_event || wrap_event;
+    
+    // Flag pentru detectarea frontului
+    reg last_overflow_underflow;
     
     // Registrii pentru retinerea configuratiei la overflow/underflow
     reg[15:0] active_period;
@@ -38,12 +40,17 @@ module pwm_gen (
         if (!rst_n) begin
             pwm_out <= 1'b0;
             last_overflow_underflow <= 1'b0;
+            last_count_val <= 16'h0000;
             active_period <= 16'h0000;
             active_compare1 <= 16'h0000;
             active_compare2 <= 16'h0000;
             active_align_left_right <= 1'b0;
             active_aligned_mode <= 1'b0;
         end else begin
+            // Memorare valoarea anterioara a counter-ului
+            last_count_val <= count_val;
+            
+            // Memorare stare overflow pentru detectie front
             last_overflow_underflow <= overflow_underflow;
             
             // Actualizare configuratie la overflow/underflow (pe front)
@@ -64,7 +71,7 @@ module pwm_gen (
                 if (!active_aligned_mode) begin
                     // Aliniere la stanga (align_left_right == 0)
                     if (!active_align_left_right) begin
-                        // Start pe 1, schimba in 0 cand ajunge la compare1
+                        // Start pe 1 la overflow, schimba in 0 la compare1
                         if (overflow_underflow && !last_overflow_underflow) begin
                             pwm_out <= 1'b1;  // Reset la inceput de perioada
                         end else if (count_val == active_compare1) begin
@@ -72,7 +79,7 @@ module pwm_gen (
                         end
                     end else begin
                         // Aliniere la dreapta (align_left_right == 1)
-                        // Start pe 0, schimba in 1 cand ajunge la compare1
+                        // Start pe 0 la overflow, schimba in 1 la compare1
                         if (overflow_underflow && !last_overflow_underflow) begin
                             pwm_out <= 1'b0;  // Reset la inceput de perioada
                         end else if (count_val == active_compare1) begin
@@ -93,5 +100,4 @@ module pwm_gen (
             end
         end
     end
-
 endmodule
