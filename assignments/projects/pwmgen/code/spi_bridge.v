@@ -64,4 +64,15 @@ always @(posedge clk or negedge rst_n) begin
     end
 end
 
+// Generate byte_sync pulse when a full byte is received
+reg byte_sync_reg;
+assign byte_sync = byte_sync_reg;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n)
+        byte_sync_reg <= 1'b0;
+    else
+        byte_sync_reg <= cs_active && sclk_rising && (bit_cnt == 3'd7);
+end
+
 endmodule
