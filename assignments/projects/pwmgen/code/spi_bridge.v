@@ -30,7 +30,38 @@ wire sclk_falling = (sclk_sync == 2'b10);
 wire cs_active = ~cs_sync[1];
 
 // Shift Registers and Counters
+reg [2:0] byte_cnt;
+reg [7:0] shift_in, shift_out;
+reg miso_reg;
+assign miso <= miso_reg
+assign data_in <= shift_in
 
 // SPI Logic
+always @(posedge clk or negedge rst_n) begin
+    if(!rst_n) begin
+        byte_cnt <= 3d'0;
+        shift_in <= 8d'0;
+        shift_out <= 8d'0;
+        miso_reg <= 1b'0;
+    end else begin
+        if (!cs_active) begin
+            byte_cnt <= 3d'0;
+            shift_out <= data_out;
+            miso_reg <= data_out[7];
+        end else begin
+            //reading data
+            if(sclk_rising) begin
+                shift_in <= {shift_in[6], mosi};
+                byte_cnt <= byte_cnt + 1;    
+            end
+
+            //sending data
+            if(sclk_falling) begin
+                shift_out <= {shift_out[6], 1'b0};
+                miso_reg <= shift_out[6];
+            end
+        end
+    end
+end
 
 endmodule
