@@ -14,4 +14,23 @@ module instr_dcd (
     output[7:0] data_write
 );
 
+reg rw_reg;
+reg hl_reg;
+reg [5:0] addr_reg;
+reg [7:0] data_out_reg;
+reg [7:0] data_write_reg;
+reg write_reg;
+reg read_reg;
+
+
+// 0 = SETUP, 1 = DATA
+reg state;
+
+assign data_out = data_out_reg;
+assign data_write = data_write_reg;
+assign addr = addr_reg;
+assign read = read_reg;
+assign write = write_reg;
+
+
 endmodule
