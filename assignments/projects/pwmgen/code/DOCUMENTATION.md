@@ -124,3 +124,110 @@ This signal is essential for the component that decodes or processes the receive
 ---
 
 ### INSTRUCTION DECODER
+
+The instruction decoder receives bytes from the SPI bridge and interprets them either as **instruction bytes** or **data bytes**, depending on the current internal state. Before implementing the decoding logic, the necessary output registers are defined and connected to their corresponding module outputs through continuous assignments. A single-bit `state` register is also introduced to indicate whether the module is currently processing an instruction (`state = 0`) or receiving the data associated with that instruction (`state = 1`).
+
+```
+reg rw_reg;
+reg hl_reg;
+reg [5:0] addr_reg;
+reg [7:0] data_out_reg;
+reg [7:0] data_write_reg;
+reg write_reg;
+reg read_reg;
+
+// 0 = SETUP, 1 = DATA
+reg state;
+
+assign data_out   = data_out_reg;
+assign data_write = data_write_reg;
+assign addr       = addr_reg;
+assign read       = read_reg;
+assign write      = write_reg;
+```
+
+---
+
+### **Decoder Logic Overview**
+
+The main decoding logic resides inside an `always` block that executes on each **posedge** of `clk` or **negedge** of `rst_n`.  
+Its behavior can be summarized as follows:
+
+---
+
+### **1. Reset Handling**
+
+If the reset signal is asserted (`rst_n == 0`):
+
+- All internal registers (including control signals and outputs) are cleared to default values.
+- The state machine is returned to the **SETUP** state (`state = 0`).
+
+This ensures deterministic behavior when starting the system or recovering from reset.
+
+---
+
+### **2. Normal Operation**
+
+When reset is not asserted, the decoder performs the following steps each cycle:
+
+- `write_reg` and `read_reg` are cleared to `0` at the beginning of the cycle.
+- A `case` statement selects the appropriate behavior depending on the current value of the `state` register.
+
+---
+
+### **State 0 – Instruction Interpretation**
+
+When `state == 0`, the incoming byte is treated as an **instruction byte**. Its internal structure is decoded into the following fields:
+
+- `rw_reg` – operation type (read or write), extracted from the **MSB**
+- `hl_reg` – selects high or low byte (if addressing partial registers)
+- `addr_reg` – 6-bit register address
+
+The decoder then behaves differently depending on whether the operation is a **read** or a **write**:
+
+#### **Write Operation (`rw_reg == 1`)**
+
+- No data needs to be returned to the external master yet.
+- `data_out_reg` is cleared to `0` (dummy value).
+
+#### **Read Operation (`rw_reg == 0`)**
+
+- The decoder loads the current value from `data_read` into `data_out_reg`, making it available for transmission back to the SPI master.
+- `read_reg` is asserted (`1`), signaling that a read cycle is requested by the system.
+
+After processing the instruction byte, the state machine transitions to:
+
+```
+state <= 1;    // proceed to DATA state
+```
+
+---
+
+### **State 1 – Data Handling**
+
+When `state == 1`, the decoder handles the **data byte** associated with the previously decoded instruction.
+
+#### **Write Operation**
+
+Only write operations require active handling in this state:
+
+- The incoming data byte (`data_in`) is stored in `data_write_reg`.
+- This value is exposed through the `data_write` output, enabling the addressed register to update its contents.
+- `write_reg` is asserted (`1`), informing the system that valid write data is available.
+
+#### **Read Operation**
+
+Read operations do **not** require explicit action in this state; by the time state 1 is reached, the read data has already been prepared during state 0.
+
+
+#### **State Reset**
+
+At the end of state 1:
+
+```
+state <= 0;    // return to SETUP and wait for next instruction
+```
+
+The decoder waits for the next `byte_sync` signal from the SPI bridge, indicating that a new instruction byte has been received and is ready for processing.
+
+---
